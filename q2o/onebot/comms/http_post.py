@@ -5,6 +5,8 @@
 - 应用响应中的动作(action)会被执行并把结果回传（OneBot 11 快速操作语义）
 """
 
+# by:xiaoliang - 2026.10.17
+
 from __future__ import annotations
 
 import hashlib
@@ -55,7 +57,6 @@ class HttpPostComm(BaseComm):
                 if resp.status >= 400:
                     self.log.warning("反向 HTTP 上报返回 %d", resp.status)
                     return
-                # OneBot 11: 应用可在响应体内携带快速操作
                 if resp.content_type == "application/json":
                     reply = await resp.json()
                     await self._handle_quick_action(reply)

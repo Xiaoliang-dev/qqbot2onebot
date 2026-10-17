@@ -1,5 +1,7 @@
 """OneBot 通信连接基类。"""
 
+# by:xiaoliang - 2026.10.17
+
 from __future__ import annotations
 
 import logging
@@ -21,10 +23,10 @@ class BaseComm:
         self.self_id = self_id
         self.log = logging.getLogger(f"q2o.onebot.comm.{name}")
 
-    async def start(self) -> None:  # pragma: no cover - 抽象
+    async def start(self) -> None:  # pragma: no cover
         raise NotImplementedError
 
-    async def stop(self) -> None:  # pragma: no cover - 抽象
+    async def stop(self) -> None:  # pragma: no cover
         raise NotImplementedError
 
     async def push_event(self, event: dict[str, Any]) -> None:  # pragma: no cover

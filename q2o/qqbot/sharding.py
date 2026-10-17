@@ -9,6 +9,8 @@
     重连统计中，这里以本机资源为主）。
 """
 
+# by:xiaoliang - 2026.10.17
+
 from __future__ import annotations
 
 import logging
@@ -16,7 +18,6 @@ import os
 
 log = logging.getLogger("q2o.sharding")
 
-# 权重（需求规定）
 W_GATEWAY_SUGGESTION = 0.8
 W_HOST_ASSESSMENT = 0.2
 
@@ -30,7 +31,7 @@ def _available_memory_gb() -> float:
                     return int(line.split()[1]) / 1024 / 1024
     except OSError:
         pass
-    return 4.0  # 无法探测时的保守假设
+    return 4.0
 
 
 def host_assessment() -> int:

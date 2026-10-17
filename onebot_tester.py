@@ -1,44 +1,7 @@
 # -*- coding: utf-8 -*-
-"""
-OneBot v11 协议测试工具
-=======================
+"""OneBot v11 测试客户端，支持事件监听、API 调用与交互式测试。"""
 
-功能：
-  1. 通过 WebSocket 监听并解析所有事件：
-     - 私聊 / 群聊消息
-     - 群成员增加 / 减少、禁言、管理员变更、群文件上传
-     - 消息撤回（群 / 好友）、戳一戳
-     - 好友请求、加群请求 / 邀请（可直接审批）
-  2. 事件历史缓存，可随时回看
-  3. 发送私聊 / 群聊消息（HTTP API 或 WS API 两种通道可选）
-  4. 查询当前账号的群列表（知道有多少群聊）和好友列表
-
-依赖：
-  pip install requests websockets
-
-端口说明（大多数实现的默认配置）：
-  - HTTP API 端口: go-cqhttp 5700 / NapCat 3000
-  - WS 事件端口:   go-cqhttp 6700 / NapCat 3001
-  两个端口必须分别指定，用 --via-ws 可让 API 调用也走 WS 通道
-  （此时只需 WS 端口一个即可工作）。
-
-用法示例：
-  # HTTP API + WS 事件（分开两个端口，默认方式）
-  python onebot_tester.py --http-port 5700 --ws-port 6700
-
-  # 全部走 WS（只填一个端口）
-  python onebot_tester.py --ws-port 3001 --via-ws
-
-  启动后进入交互命令行：
-    >>> send 群 123456 大家好
-    >>> reply 群 123456 收到
-    >>> groups
-    >>> history
-    >>> approve 群 <flag>
-    >>> quit
-
-此为q2o测试实例
-"""
+# by:xiaoliang - 2026.10.17
 
 import argparse
 import asyncio
@@ -52,10 +15,6 @@ from collections import deque
 import requests
 import websockets
 
-
-# ---------------------------------------------------------------------------
-# 事件缓存：WS 线程写入，命令行线程读取
-# ---------------------------------------------------------------------------
 
 class EventStore:
     """保存最近收到的事件，供 history / reply 等命令使用。"""
@@ -87,10 +46,6 @@ class EventStore:
         return items[-limit:]
 
 
-# ---------------------------------------------------------------------------
-# WS API 桥：让同步的命令行线程也能通过 WS 调用 API
-# ---------------------------------------------------------------------------
-
 class WsApiBridge:
     """
     同步线程 -> asyncio WS 循环 的调用桥。
@@ -100,13 +55,11 @@ class WsApiBridge:
     """
 
     def __init__(self):
-        self._pending: queue.Queue = queue.Queue()   # (echo, action, params, future)
-        self._futures: dict[str, "queue.Queue"] = {}  # echo -> 一次性结果队列
+        self._pending: queue.Queue = queue.Queue()
+        self._futures: dict[str, "queue.Queue"] = {}
         self._echo_counter = itertools.count(1)
-        self._ws = None       # 当前 WS 连接（由 listen_events 设置）
+        self._ws = None
         self.connected = threading.Event()
-
-    # --- 同步线程侧 ---
 
     def call(self, action: str, params: dict, timeout: float = 10) -> dict:
         """同步调用 WS API，返回 OneBot 响应 dict。"""
@@ -122,8 +75,6 @@ class WsApiBridge:
             raise RuntimeError(f"WS API {action} 调用超时")
         finally:
             self._futures.pop(echo, None)
-
-    # --- asyncio 循环侧 ---
 
     async def pump(self):
         """从待发送队列取请求并写入 WS。由 listen_events 的任务并发运行。"""
@@ -144,10 +95,6 @@ class WsApiBridge:
             q.put(resp)
 
 
-# ---------------------------------------------------------------------------
-# OneBot 客户端
-# ---------------------------------------------------------------------------
-
 class OneBotClient:
     """OneBot v11 客户端：API 走 HTTP 或 WS，事件走 WS。"""
 
@@ -162,8 +109,6 @@ class OneBotClient:
         self.ws_scheme = "wss" if use_https else "ws"
         self.via_ws = via_ws
         self.bridge = WsApiBridge()
-
-    # ---------- API 调用（自动选择通道） ----------
 
     def api(self, action: str, params: dict | None = None) -> dict:
         """调用 OneBot API，返回响应 dict。via_ws 时走 WS，否则走 HTTP。"""
@@ -184,8 +129,6 @@ class OneBotClient:
         resp = requests.post(url, json=params, headers=headers, timeout=10)
         resp.raise_for_status()
         return resp.json()
-
-    # ---------- 常用功能封装 ----------
 
     def get_login_info(self) -> dict:
         return self.api("get_login_info")["data"]
@@ -217,8 +160,6 @@ class OneBotClient:
                         {"flag": flag, "type": sub_type, "approve": approve,
                          "reason": reason})["data"]
 
-    # ---------- WebSocket 事件监听 ----------
-
     async def listen_events(self, store: EventStore):
         """连接 WS，持续接收事件：缓存 + 打印解析结果 + 响应 WS API 调用。"""
         url = f"{self.ws_scheme}://{self.host}:{self.ws_port}"
@@ -236,7 +177,6 @@ class OneBotClient:
                         event = json.loads(raw)
                     except json.JSONDecodeError:
                         continue
-                    # 带 echo 的是 WS API 的响应，转给调用桥，不作为事件
                     if "echo" in event:
                         self.bridge.dispatch_response(event)
                         continue
@@ -246,8 +186,6 @@ class OneBotClient:
                 pump.cancel()
                 self.bridge._ws = None
                 self.bridge.connected.clear()
-
-    # ---------- 事件解析 ----------
 
     NOTICE_NAMES = {
         "group_upload": "群文件上传",
@@ -381,16 +319,11 @@ class OneBotClient:
             print(f"[{t}] [请求] {cls._parse_request(event)}")
 
         elif post_type == "meta_event":
-            # 心跳 / 生命周期，静默处理
             pass
 
         else:
             print(f"[{t}] [其他事件] {json.dumps(event, ensure_ascii=False)}")
 
-
-# ---------------------------------------------------------------------------
-# 交互式命令行
-# ---------------------------------------------------------------------------
 
 HELP_TEXT = """
 可用命令：
@@ -495,7 +428,6 @@ def run_cli(client: OneBotClient, store: EventStore):
                     print("用法: reply 群|私 <目标号> [内容]")
                     continue
                 target = int(parts[2].split(" ", 1)[0]) if len(parts) == 3 else None
-                # 内容 = 第三个参数中目标号之后的部分；无目标号则读取输入
                 message = ""
                 if len(parts) == 3 and " " in parts[2]:
                     message = parts[2].split(" ", 1)[1]
@@ -515,7 +447,6 @@ def run_cli(client: OneBotClient, store: EventStore):
                     print(f"已{'同意' if ok else '拒绝'}好友请求 {flag}")
                 elif scope == "群":
                     reason = "" if ok else input("拒绝理由(可空): ").strip()
-                    # 区分加群申请(add)和邀请(invite)，用 try 兜底
                     try:
                         client.set_group_add_request(flag, "invite", approve=ok,
                                                      reason=reason)
@@ -543,8 +474,6 @@ def run_cli(client: OneBotClient, store: EventStore):
             print(f"出错: {e}")
 
 
-# ---------------------------------------------------------------------------
-
 def main():
     parser = argparse.ArgumentParser(description="OneBot v11 协议测试工具")
     parser.add_argument("--host", default="127.0.0.1", help="OneBot 服务地址")
@@ -564,7 +493,6 @@ def main():
                           args.token, args.https, args.via_ws)
     store = EventStore(maxlen=200)
 
-    # 启动 WS 事件监听线程
     if not args.no_listen:
         def ws_thread():
             while True:
@@ -581,14 +509,12 @@ def main():
         threading.Thread(target=ws_thread, daemon=True).start()
 
     if args.via_ws:
-        # 等 WS 连接建立后再继续
         print("等待 WS 连接...", end="", flush=True)
         if not client.bridge.connected.wait(timeout=15):
             print("\n警告: WS 连接超时，仍可继续尝试")
     elif not args.no_listen:
-        time.sleep(0.5)  # 给 WS 线程一点时间
+        time.sleep(0.5)
 
-    # 显示登录信息
     try:
         info = client.get_login_info()
         print(f"\r已连接: {info.get('nickname')} (QQ: {info.get('user_id')})")

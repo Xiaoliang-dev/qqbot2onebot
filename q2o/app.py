@@ -1,5 +1,7 @@
 """应用编排：装配 QQ 接入、事件转换、动作处理与全部 OneBot 连接。"""
 
+# by:xiaoliang - 2026.10.17
+
 from __future__ import annotations
 
 import asyncio
@@ -59,10 +61,8 @@ class Application:
         self._qq_tasks: list[asyncio.Task] = []
         self._webhook: QQWebhookServer | None = None
 
-    # ------------------------------------------------------------ QQ -> OneBot
     async def _on_qq_event(self, qq_type: str, data: dict[str, Any],
                            event_id: str = "") -> None:
-        # 按协议版本分别转换（同版本只转换一次）
         converted: dict[int, dict | None] = {}
         for proto in {c.protocol for c in self.comms}:
             try:
@@ -84,7 +84,6 @@ class Application:
         if pushed:
             log.debug("事件 %s 已推送到 %d 条连接", qq_type, pushed)
 
-    # ------------------------------------------------------------ QQ 接入
     async def _start_qq_websocket(self) -> None:
         intents = compute_intents(self.cfg.qqbot.events)
         log.info("intents = %d (events=%s)", intents,
@@ -118,7 +117,7 @@ class Application:
                 forward_replayed=forward,
                 error_min_level=self.cfg.logging.qq_error_min_level)
             self._qq_tasks.append(asyncio.create_task(ws.run()))
-            await asyncio.sleep(1)  # 避免并发 identify 触发频控
+            await asyncio.sleep(1)
         log.info("已启动 %d 个 QQ 网关切片", shard_count)
 
     async def _start_qq_webhook(self) -> None:
@@ -130,7 +129,6 @@ class Application:
         intents = compute_intents(self.cfg.qqbot.events)
         log.info("webhook 模式，声明 intents = %d", intents)
 
-    # ------------------------------------------------------------ OneBot 连接
     async def _start_comms(self) -> None:
         for conn_cfg in self.cfg.onebot.connections:
             if not conn_cfg.enable:
@@ -145,7 +143,6 @@ class Application:
         if not self.comms:
             log.warning("没有启用任何 OneBot 连接，事件将无处推送")
 
-    # ------------------------------------------------------------ 生命周期
     async def start(self) -> None:
         await self._start_comms()
         if self.cfg.qqbot.ingress == "webhook":

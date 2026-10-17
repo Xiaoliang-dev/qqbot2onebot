@@ -24,6 +24,8 @@ QQ 侧业务错误码转换为 OneBot retcode 并向上反馈给调用方:
 wording / message 中携带 QQ 原始错误码，便于业务侧定位。
 """
 
+# by:xiaoliang - 2026.10.17
+
 from __future__ import annotations
 
 import base64
@@ -45,7 +47,6 @@ log = logging.getLogger("q2o.onebot.actions")
 _CQ_RE = re.compile(r"\[CQ:([a-zA-Z0-9_-]+)((?:,[^\]]*)?)\]")
 _CQ_PARAM_RE = re.compile(r"([a-zA-Z0-9_-]+)=([^,\]]*)")
 
-# CQ 码转义规则：OneBot 文本中的转义序列 -> 原始字符
 _CQ_UNESCAPES = (
     ("&amp;", "&"),
     ("&#91;", "["),
@@ -53,58 +54,43 @@ _CQ_UNESCAPES = (
     ("&#44;", ","),
 )
 
-# QQ 发送 content 时的转义（与官方接收方向相反，仅用于纯文本段）
 _QQ_ESCAPES = (
     ("&", "&amp;"),
     ("[", "&#91;"),
     ("]", "&#93;"),
 )
 
-# QQ 富媒体上传 file_type: 1 图片, 2 视频, 3 语音, 4 文件
 _FILE_TYPES = {"image": 1, "video": 2, "record": 3, "file": 4}
 
 _SEV_RETCODE = {"minor": 1300, "major": 1400, "fatal": 1500}
 
-# 自动/上下文被动引用失效时，可安全降级为主动消息重试的 QQ 错误码
 _PASSIVE_FALLBACK_CODES = {
     304103, 40034005, 40034024, 40034025,
     40034026, 40034027, 40034128,
 }
 
-# ---------------------------------------------------------------------------
-# OneBot 11 标准动作全集（botuniverse/onebot-11 + 常见扩展动作）
-# 表中未单独实现的动作自动注册为「可访问但返回 1404」。
-# ---------------------------------------------------------------------------
 OB11_ACTIONS: tuple[str, ...] = (
-    # 消息
     "send_private_msg", "send_group_msg", "send_msg",
     "send_private_forward_msg", "send_group_forward_msg",
     "delete_msg", "get_msg", "get_forward_msg",
-    # 点赞与群管理
     "send_like",
     "set_group_kick", "set_group_ban", "set_group_anonymous_ban",
     "set_group_whole_ban", "set_group_admin", "set_group_anonymous",
     "set_group_card", "set_group_name", "set_group_leave",
     "set_group_special_title",
-    # 请求审批
     "set_friend_add_request", "set_group_add_request",
-    # 账号与信息
     "get_login_info", "get_stranger_info",
     "get_friend_list",
     "get_group_info", "get_group_list",
     "get_group_member_info", "get_group_member_list",
     "get_group_honor_info",
-    # 凭证与文件
     "get_cookies", "get_csrf_token", "get_credentials",
     "get_record", "get_image",
     "can_send_image", "can_send_record",
-    # 状态与运维
     "get_status", "get_version_info", "set_restart", "clean_cache",
-    # 内部动作（快速操作回执，go-cqhttp 风格）
     ".handle_quick_operation",
 )
 
-# OneBot 12(实验性) 核心动作 -> OneBot 11 动作名映射（同名直通）
 _OB12_TO_OB11: dict[str, str] = {
     "delete_message": "delete_msg",
     "get_user_info": "get_stranger_info",
@@ -116,7 +102,6 @@ _OB12_TO_OB11: dict[str, str] = {
     "set_group_name": "set_group_name",
     "leave_group": "set_group_leave",
 }
-# OneBot 12 中单独适配/实现的动作
 _OB12_SPECIAL = ("get_supported_actions", "get_status", "get_version",
                  "get_self_info", "send_message", "upload_file",
                  "upload_file_fragmented", "get_file", "get_file_fragmented")
@@ -151,10 +136,6 @@ def _escape_qq_text(text: str) -> str:
         text = text.replace(src, dst)
     return text
 
-
-# ---------------------------------------------------------------------------
-# Q2OEX 消息结构规范化
-# ---------------------------------------------------------------------------
 
 def _decode_payload(value: str) -> Any:
     """解析 CQ:q2oex 的 data：优先 JSON，其次 base64url(JSON)。"""
@@ -191,7 +172,6 @@ def _normalize_button(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError("button 必须是对象或字符串")
 
-    # 已是官方结构则原样透传
     if "render_data" in value or "action" in value:
         return dict(value)
 
@@ -206,7 +186,6 @@ def _normalize_button(value: Any) -> dict[str, Any]:
         render_data["style"] = int(value.get("style"))
 
     action: dict[str, Any] = {
-        # 简写默认做指令按钮；业务可显式传 type=0/1 改为链接/回调按钮。
         "type": int(value.get("type", 2)),
         "permission": dict(value.get("permission")
                            or {"type": int(value.get("permission_type", 2))}),
@@ -249,7 +228,6 @@ def _normalize_keyboard(value: Any) -> dict[str, Any]:
                 raise ValueError("keyboard JSON 必须是对象")
             value = parsed
         else:
-            # 平台按钮模板 ID 短形式
             return {"id": value}
     if isinstance(value, list):
         return {"content": {"rows": [_normalize_keyboard_row(v) for v in value]}}
@@ -257,10 +235,10 @@ def _normalize_keyboard(value: Any) -> dict[str, Any]:
         raise ValueError("keyboard 必须是模板 ID、对象或行数组")
 
     keyboard = dict(value)
-    if "rows" in keyboard:  # Q2OEX 简写：直接传 rows
+    if "rows" in keyboard:
         return {"content": {"rows": [_normalize_keyboard_row(v)
                                      for v in keyboard.get("rows") or []]}}
-    if "buttons" in keyboard:  # Q2OEX 简写：单行按钮
+    if "buttons" in keyboard:
         return {"content": {"rows": [_normalize_keyboard_row(keyboard)]}}
     if "content" in keyboard and keyboard["content"] is not None:
         content = dict(keyboard["content"])
@@ -289,10 +267,10 @@ class _QQContent:
                  "media_url", "reply_msg_id")
 
     def __init__(self) -> None:
-        self.content = ""             # QQ content 字符串（文本 + at 标签，文本已转义）
+        self.content = ""
         self.markdown: dict[str, Any] | None = None
         self.keyboard: dict[str, Any] | None = None
-        self.media_type = 0           # QQ msg_type（0 纯文本, 7 富媒体）
+        self.media_type = 0
         self.media_url: str | None = None
         self.reply_msg_id: str | None = None
 
@@ -362,7 +340,6 @@ class ActionHandler:
         self.q2oex_enable = q2oex_enable
         self.passive_by_default = passive_by_default
 
-        # ------------------------------------------------ 真实实现的动作
         self._handlers: dict[str, Callable[[dict, int], Awaitable[dict]]] = {
             "send_msg": self._send_msg,
             "send_private_msg": self._send_private_msg,
@@ -377,11 +354,8 @@ class ActionHandler:
             "get_version_info": self._get_version_info,
             "get_status": self._get_status,
             "get_group_member_list": self._get_group_member_list,
-            # 入群申请审批（QQ 官方 GROUP_JOIN_REQUEST 事件）
             "set_group_add_request": self._set_group_add_request,
-            # 快速操作回执（内部）
             ".handle_quick_operation": self._handle_quick_operation,
-            # q2oex 扩展动作
             "q2oex.send_message": self._q2oex_send_message,
             "q2oex.send_group_message": self._q2oex_send_group,
             "q2oex.send_private_message": self._q2oex_send_private,
@@ -391,7 +365,6 @@ class ActionHandler:
             "q2oex.get_gateway_info": self._q2oex_gateway_info,
         }
 
-        # ------------------------------------ 其余标准动作：可访问但返回 1404
         special_reasons = {
             "set_friend_add_request":
                 "set_friend_add_request（QQ 官方协议中好友添加无需审批，无对应接口）",
@@ -422,7 +395,6 @@ class ActionHandler:
             return unsupported(name)
         return _stub
 
-    # ------------------------------------------------------------------ 入口
     async def dispatch(self, action: str, params: dict | None,
                        protocol: int) -> dict[str, Any]:
         params = params or {}
@@ -439,11 +411,10 @@ class ActionHandler:
             return _qq_fail(e)
         except ValueError as e:
             return fail(1400, str(e))
-        except Exception as e:  # noqa: BLE001 - 兜底，保证连接不被异常打断
+        except Exception as e:  # noqa: BLE001
             log.exception("动作 %s 处理异常", action)
             return fail(1400, f"内部错误: {e}")
 
-    # ------------------------------------------------------------------ OB12
     async def _dispatch_v12(self, action: str, params: dict) -> dict[str, Any]:
         """OneBot 12(实验性) 动作适配入口。"""
         try:
@@ -472,7 +443,6 @@ class ActionHandler:
             if action in ("upload_file_fragmented",
                           "get_file", "get_file_fragmented"):
                 return unsupported(action)
-            # 映射到 OB11 同名动作
             ob11 = _OB12_TO_OB11.get(action, action)
             handler = self._handlers.get(ob11)
             if handler is None:
@@ -528,7 +498,6 @@ class ActionHandler:
             return fail(1400, "upload_file 需要 group_id 或 user_id 指定上传目标")
         return ok({"file_id": result.get("file_info", "")})
 
-    # ------------------------------------------------------------------ 消息解析
     def _build_content(self, message: Any) -> _QQContent:
         """OneBot 消息(string CQ / 段数组) -> QQ 侧消息结构。
 
@@ -628,7 +597,6 @@ class ActionHandler:
         if media:
             qc.media_type, qc.media_url = media
 
-        # QQ 官方约束：Markdown 与 content/富媒体是不同消息类型，不能混填。
         if qc.markdown is not None:
             if qc.media_url:
                 raise ValueError("Markdown 消息不能与 image/record/video/file 同条发送")
@@ -653,7 +621,6 @@ class ActionHandler:
         for button in p.get("buttons") or []:
             _append_button(qc, button)
 
-    # ------------------------------------------------------------------ 发送辅助
     def _coerce_msg_id(self, value: Any) -> str | None:
         if value in (None, ""):
             return None
@@ -685,7 +652,6 @@ class ActionHandler:
         if passive is None:
             passive = self.passive_by_default
         if p.get("is_wakeup"):
-            # 互动召回消息与被动回复标识互斥。
             passive = False
             explicit_msg_id = explicit_event_id = None
 
@@ -818,7 +784,6 @@ class ActionHandler:
                 srv_send_msg=False)
             file_info = uploaded.get("file_info", "")
 
-        # CQ:reply 仍作为被动 msg_id；主动发送则不传任何被动标识。
         if qc.reply_msg_id and p.get("msg_id") in (None, ""):
             p["msg_id"] = qc.reply_msg_id
         ref, allow_fallback = self._passive_ref(group_openid, "group", p)
@@ -870,7 +835,6 @@ class ActionHandler:
             **extra)
         return self._finalize_message_result(result)
 
-    # ------------------------------------------------------------------ 标准消息动作
     async def _send_msg(self, p: dict, protocol: int) -> dict:
         if p.get("group_id") is not None or p.get("group_openid"):
             return await self._send_group_msg(p, protocol)
@@ -912,12 +876,11 @@ class ActionHandler:
         return ok({"file": file, "url": file})
 
     async def _can_send_image(self, p: dict, protocol: int) -> dict:
-        return ok({"yes": True})   # 支持 URL 图片
+        return ok({"yes": True})
 
     async def _can_send_record(self, p: dict, protocol: int) -> dict:
-        return ok({"yes": True})   # 支持 URL 语音(file_type=3)
+        return ok({"yes": True})
 
-    # ------------------------------------------------------------------ 入群审批
     async def _set_group_add_request(self, p: dict, protocol: int) -> dict:
         flag = str(p.get("flag", ""))
         if not flag:
@@ -942,7 +905,6 @@ class ActionHandler:
             return ok()
         return await self.dispatch(str(action), operation, protocol)
 
-    # ------------------------------------------------------------------ 信息
     async def _get_login_info(self, p: dict, protocol: int) -> dict:
         uid = int(self.self_id) if str(self.self_id).isdigit() else 0
         return ok({"user_id": uid, "nickname": f"q2o-bot-{self.app_id}"})
@@ -957,7 +919,6 @@ class ActionHandler:
                    "app_initialized": True, "app_enabled": True,
                    "plugins_good": True, "app_good": True})
 
-    # ------------------------------------------------------------------ 群成员
     async def _get_group_member_list(self, p: dict, protocol: int) -> dict:
         """GET /v2/groups/{group_openid}/members 分页拉取（最多 10 页 × 100 人）。
 
@@ -991,7 +952,6 @@ class ActionHandler:
                 break
         return ok(members)
 
-    # ------------------------------------------------------------------ q2oex
     async def _q2oex_send_message(self, p: dict, protocol: int) -> dict:
         detail = str(p.get("detail_type", ""))
         if detail == "group":

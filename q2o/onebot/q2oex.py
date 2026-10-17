@@ -8,6 +8,8 @@
 动作命名约定: q2oex.<动作名>
 """
 
+# by:xiaoliang - 2026.10.17
+
 from __future__ import annotations
 
 import time
@@ -36,7 +38,6 @@ def wrap_ob12(event_name: str, self_id: str, **fields) -> dict[str, Any]:
     }
 
 
-# QQ 事件类型 -> q2oex 事件名（非消息类）
 Q2OEX_EVENT_MAP: dict[str, str] = {
     "GUILD_CREATE": "guild_create",
     "GUILD_UPDATE": "guild_update",

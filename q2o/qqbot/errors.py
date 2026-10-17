@@ -9,13 +9,13 @@
 = error 时，fatal 与 major 均记 ERROR。
 """
 
+# by:xiaoliang - 2026.10.17
+
 from __future__ import annotations
 
 import logging
 
-# severity: fatal | major | minor
 QQ_ERROR_CODES: dict[int, tuple[str, str]] = {
-    # ---------- WebSocket Opcode / 通用 ----------
     4001: ("无效的 opcode", "major"),
     4002: ("无效的 payload", "major"),
     4007: ("seq 错误，resume 重试", "minor"),
@@ -26,12 +26,10 @@ QQ_ERROR_CODES: dict[int, tuple[str, str]] = {
     4012: ("无效的 API version", "fatal"),
     4013: ("无效的 intent(s)", "fatal"),
     4014: ("无权订阅该 intent(s)，请检查开放平台权限", "fatal"),
-    # ---------- HTTP 开放平台通用 ----------
     10001: ("账号异常/Token 无效", "fatal"),
     10003: ("无权限访问该接口", "major"),
     10004: ("接口不存在", "major"),
     11001: ("系统繁忙，请稍后重试", "minor"),
-    # ---------- 鉴权 ----------
     11241: ("Token 过期", "minor"),
     11242: ("Token 校验失败", "major"),
     11243: ("签名错误", "major"),
@@ -39,7 +37,6 @@ QQ_ERROR_CODES: dict[int, tuple[str, str]] = {
     11252: ("无效的应用 ID", "fatal"),
     11253: ("应用未上线，无法使用该能力", "major"),
     11254: ("应用接口调用超出频控", "minor"),
-    # ---------- 消息 ----------
     11261: ("参数错误", "minor"),
     11262: ("机器人不在该群/频道内", "major"),
     11263: ("消息长度超限", "major"),
@@ -95,11 +92,10 @@ QQ_ERROR_CODES: dict[int, tuple[str, str]] = {
     630008: ("互动回调预处理失败", "major"),
 }
 
-# WebSocket 断连 close code -> 是否允许 resume
 QQ_WS_CLOSE_RESUMEABLE = {
-    4007: True,   # seq 错误
+    4007: True,
     4008: True,
-    4009: False,  # 连接过期，须重新 identify
+    4009: False,
     4010: False,
     4011: False,
     4012: False,

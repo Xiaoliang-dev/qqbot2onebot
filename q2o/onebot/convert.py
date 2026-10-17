@@ -1,5 +1,7 @@
 """QQ 官方事件 -> OneBot 11 / OneBot 12 事件转换器。"""
 
+# by:xiaoliang - 2026.10.17
+
 from __future__ import annotations
 
 import logging
@@ -17,7 +19,6 @@ _AT_RE = re.compile(
     r'<qqbot-at-user id="(?P<legacy>[^"]+)"\s*/>|<@(?P<mention>[^>\s]+)>'
 )
 
-# QQ 消息内容的转义规则（官方）：接收时反转义
 _CONTENT_ESCAPES = (
     ("&amp;", "&"),
     ("&#91;", "["),
@@ -48,10 +49,6 @@ def _effective_content(d: dict[str, Any]) -> str:
         return content
     return "\n".join([content, *texts]).strip("\n")
 
-
-# ---------------------------------------------------------------------------
-# 消息内容转换（QQ -> OneBot）
-# ---------------------------------------------------------------------------
 
 def content_to_cq(content: str, attachments: list[dict] | None,
                   idmap: IdMapper) -> str:
@@ -127,10 +124,6 @@ def _parse_ts(ts: str | None) -> int:
         return int(time.time())
 
 
-# ---------------------------------------------------------------------------
-# 主转换入口
-# ---------------------------------------------------------------------------
-
 class EventConverter:
     def __init__(self, idmap: IdMapper, ctx: MessageContext,
                  self_id: str, q2oex_enable: bool = True,
@@ -141,7 +134,7 @@ class EventConverter:
         self.self_id = self_id
         self.q2oex_enable = q2oex_enable
         self.join_ctx = join_ctx or JoinRequestContext()
-        self.store = store  # 支撑 get_msg 动作的近期消息缓存
+        self.store = store
 
     def convert(self, qq_type: str, d: dict[str, Any],
                 protocol: int, *, event_id: str = "") -> dict[str, Any] | None:
@@ -181,7 +174,6 @@ class EventConverter:
                 self._maybe_store(qq_type, d)
             return event
 
-        # 其余事件 -> q2oex（若启用）
         if self.q2oex_enable:
             return build_q2oex_event(qq_type, d, protocol, self.self_id)
         log.debug("忽略 QQ 事件 %s（q2oex 未启用且无标准映射）", qq_type)
@@ -190,7 +182,6 @@ class EventConverter:
     def _self_id_int(self) -> int:
         return int(self.self_id) if str(self.self_id).isdigit() else 0
 
-    # ------------------------------------------------------------- 消息缓存
     def _maybe_store(self, qq_type: str, d: dict[str, Any]) -> None:
         """把入站消息写入 MessageStore（OB11 形态），支撑 get_msg 动作。"""
         if self.store is None:
@@ -221,7 +212,6 @@ class EventConverter:
         record["raw_message"] = record["message"]
         self.store.save(mid, record)
 
-    # ------------------------------------------------------------- 群消息
     def _group_message(self, d: dict, protocol: int,
                        event_id: str = "") -> dict:
         group_openid = d.get("group_openid", "")
@@ -266,7 +256,6 @@ class EventConverter:
             **_qq_message_meta(d),
         }
 
-    # ------------------------------------------------------------- C2C 消息
     def _c2c_message(self, d: dict, protocol: int,
                      event_id: str = "") -> dict:
         author = d.get("author") or {}
@@ -307,7 +296,6 @@ class EventConverter:
             **_qq_message_meta(d),
         }
 
-    # ------------------------------------------------------------- 频道消息 -> q2oex
     def _channel_message(self, d: dict, protocol: int,
                          event_id: str = "") -> dict | None:
         if not self.q2oex_enable:
@@ -349,7 +337,6 @@ class EventConverter:
             return wrap_ob12("direct_message", self.self_id, **fields)
         return wrap_ob11("direct_message", self.self_id, **fields)
 
-    # ------------------------------------------------------------- 群成员/机器人事件
     def _group_add_robot(self, d: dict, protocol: int) -> dict:
         group_id = self.idmap.register(d.get("group_openid", ""))
         op_id = self.idmap.register(d.get("op_member_openid", ""))
@@ -390,7 +377,6 @@ class EventConverter:
             "operator_id": op_id, "user_id": self._self_id_int(),
         }
 
-    # ------------------------------------------------------------- 入群申请审批
     def _group_join_request(self, d: dict, protocol: int) -> dict:
         """GROUP_JOIN_REQUEST -> OneBot request 事件（携带 flag，供审批动作回传）。
 
@@ -466,11 +452,9 @@ class EventConverter:
         resolved = (d.get("data") or {}).get("resolved") or {}
         interaction_id = str(d.get("id") or event_id or "")
 
-        # 互动事件本身也可作为 event_id 被动回复窗口；按场景登记上下文。
         target = (d.get("group_openid") or d.get("user_openid")
                   or d.get("channel_id") or "")
         ts = _parse_ts(d.get("timestamp"))
-        # 互动事件的可靠被动标识是外层事件 id；resolved.message_id 仅作业务字段。
         self.ctx.update(target, "", interaction_id, ts)
 
         fields = {

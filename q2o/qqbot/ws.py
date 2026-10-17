@@ -12,6 +12,8 @@
                 收到 RESUMED 后恢复转发。
 """
 
+# by:xiaoliang - 2026.10.17
+
 from __future__ import annotations
 
 import asyncio
@@ -25,7 +27,6 @@ from .errors import QQ_ERROR_CODES, QQWSCloseError, log_qq_error
 
 log = logging.getLogger("q2o.qqbot.ws")
 
-# QQ 网关 Opcode
 OP_DISPATCH = 0
 OP_HEARTBEAT = 1
 OP_IDENTIFY = 2
@@ -46,22 +47,21 @@ class QQGatewayWS:
         self.api = api
         self.wss_url = wss_url
         self.intents = intents
-        self.shard = shard          # (shard_id, shard_count)
+        self.shard = shard
         self.on_event = on_event
         self.forward_replayed = forward_replayed
         self.error_min_level = error_min_level
 
         self._ws: aiohttp.ClientWebSocketResponse | None = None
         self._session: aiohttp.ClientSession | None = None
-        self._seq: int | None = None          # 最近一次事件的 s 字段
+        self._seq: int | None = None
         self._session_id: str | None = None
         self._heartbeat_interval = 40.0
         self._heartbeat_task: asyncio.Task | None = None
         self._hb_ack_received = True
-        self._resuming = False                # 正处于补发阶段
+        self._resuming = False
         self._stopping = False
 
-    # ------------------------------------------------------------- 主循环
     async def run(self) -> None:
         """阻塞运行，内部处理所有重连逻辑。"""
         first = True
@@ -77,7 +77,6 @@ class QQGatewayWS:
                 log_qq_error(log, e, self.error_min_level,
                              f"shard {self.shard[0]}/{self.shard[1]}")
                 if not e.resumeable:
-                    # 不可续期：清空会话，重新 identify
                     self._session_id = None
                     self._seq = None
                     self._resuming = False
@@ -94,11 +93,10 @@ class QQGatewayWS:
         self._stopping = True
         await self._teardown()
 
-    # ------------------------------------------------------------- 连接
     async def _open(self) -> None:
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=0))  # ws 由心跳管理
+                timeout=aiohttp.ClientTimeout(total=0))
         self._ws = await self._session.ws_connect(
             self.wss_url, heartbeat=None, autoping=True)
         log.info("shard %d/%d 已连接 QQ 网关", self.shard[0], self.shard[1])
@@ -134,7 +132,6 @@ class QQGatewayWS:
             log.info("shard %d/%d 已发送 Resume(seq=%d)，等待补发结束(RESUMED)",
                      self.shard[0], self.shard[1], self._seq)
         else:
-            # 没有可续期会话，退回完整 identify
             await self._teardown()
             await self._connect_and_identify()
 
@@ -148,7 +145,6 @@ class QQGatewayWS:
             raise aiohttp.ClientError(f"期望 op={op}，收到 {payload.get('op')}")
         return payload
 
-    # ------------------------------------------------------------- 收包
     async def _recv_loop(self) -> None:
         assert self._ws is not None
         async for msg in self._ws:
@@ -168,7 +164,7 @@ class QQGatewayWS:
         if op == OP_DISPATCH:
             s = payload.get("s")
             if s is not None:
-                self._seq = s  # 无论是否转发都记录 s 序号
+                self._seq = s
             t = payload.get("t", "")
             d = payload.get("d") or {}
             log.debug("shard %d/%d 收到 QQ 事件: type=%s event_id=%s data=%s",
@@ -185,7 +181,6 @@ class QQGatewayWS:
                 log.info("shard %d/%d 补发结束(RESUMED)，恢复正常转发",
                          self.shard[0], self.shard[1])
                 return
-            # 补发阶段且配置为不转发：仅记录，不下发
             if self._resuming and not self.forward_replayed:
                 log.debug("shard %d 补发事件 %s 已接收未转发 (s=%s)",
                           self.shard[0], t, s)
@@ -201,7 +196,6 @@ class QQGatewayWS:
         elif op == OP_HEARTBEAT:
             await self._send(OP_HEARTBEAT, self._seq)
 
-    # ------------------------------------------------------------- 心跳
     def _start_heartbeat(self) -> None:
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
@@ -220,7 +214,6 @@ class QQGatewayWS:
         except asyncio.CancelledError:
             pass
 
-    # ------------------------------------------------------------- 工具
     async def _send(self, op: int, d: Any) -> None:
         assert self._ws is not None
         await self._ws.send_json({"op": op, "d": d})

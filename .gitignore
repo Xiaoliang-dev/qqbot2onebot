@@ -1,34 +1,30 @@
-# Python
+# 功能：忽略本地配置、运行数据、Python 缓存和编辑器文件
+# by:xiaoliang - 2026.10.17
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Virtual environments
 .venv/
 venv/
 env/
 ENV/
 
-# Build and packaging
 build/
 dist/
 *.egg-info/
 .eggs/
 
-# Local secrets and runtime state
 config.yaml
 config.yml
 logs/
 data/
 
-# Test, type-check and lint caches
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
 htmlcov/
 
-# Editor and OS files
 .vscode/*
 !.vscode/extensions.json
 .idea/

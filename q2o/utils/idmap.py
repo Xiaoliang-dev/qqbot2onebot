@@ -14,6 +14,8 @@
   持久化到 data/idmap.json，供撤回/回复等动作反查。
 """
 
+# by:xiaoliang - 2026.10.17
+
 from __future__ import annotations
 
 import hashlib
@@ -27,14 +29,8 @@ log = logging.getLogger("q2o.utils.idmap")
 DATA_DIR = "data"
 IDMAP_FILE = os.path.join(DATA_DIR, "idmap.json")
 
-# ---------------------------------------------------------------------------
-# 虚拟号池规则（与 QQ 号规则一致：纯数字、首位非 0、5~11 位）
-#   顺序分配：起始 9 位号段，用完后自然增长到 10 位、11 位，
-#   上限 99999999999（11 位）。首位恒为 1，满足「首位非 0」。
-#   如需更换号段策略，仅需改动下面两个常量。
-# ---------------------------------------------------------------------------
-VIRTUAL_ID_MIN = 100_000_000        # 9 位起始（首位非 0）
-VIRTUAL_ID_MAX = 99_999_999_999     # 11 位上限（QQ 号最长 11 位）
+VIRTUAL_ID_MIN = 100_000_000
+VIRTUAL_ID_MAX = 99_999_999_999
 
 
 class IdMapper:
@@ -42,7 +38,6 @@ class IdMapper:
         self._lock = threading.Lock()
         self._msg_to_int: dict[str, int] = {}
         self._int_to_msg: dict[int, str] = {}
-        # openid <-> 数字 ID（翻译模式: 虚拟号 o2v/v2o；哈希模式: o2e/e2o）
         self._open_to_num: dict[str, int] = {}
         self._num_to_open: dict[int, str] = {}
         self._next_virtual = VIRTUAL_ID_MIN
@@ -52,7 +47,6 @@ class IdMapper:
         if persist:
             self._load()
 
-    # ------------------------------------------------------------ 互译入口
     def register(self, openid: str) -> int:
         """openid -> 数字 ID（翻译模式为虚拟号，否则为哈希值）。
 
@@ -80,11 +74,9 @@ class IdMapper:
         with self._lock:
             return self._num_to_open.get(int(ext_id))
 
-    # 别名，语义更直观：两个方向都可称为"翻译"
     translate = register
     translate_back = resolve_external
 
-    # ------------------------------------------------------------ 分配
     @staticmethod
     def external_id(openid: str) -> int:
         """openid -> 稳定的 63 位正整数（关闭翻译时使用）。"""
@@ -104,7 +96,6 @@ class IdMapper:
         self._next_virtual = num + 1
         return num
 
-    # ------------------------------------------------------------ message
     def message_id(self, qq_msg_id: str) -> int:
         with self._lock:
             if qq_msg_id in self._msg_to_int:
@@ -120,14 +111,12 @@ class IdMapper:
         with self._lock:
             return self._int_to_msg.get(int(mid))
 
-    # ------------------------------------------------------------ 持久化
     def _load(self) -> None:
         try:
             with open(IDMAP_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
             self._msg_to_int = {k: int(v) for k, v in data.get("m2i", {}).items()}
             self._int_to_msg = {int(k): v for k, v in data.get("i2m", {}).items()}
-            # 兼容旧字段名 o2e/e2o，新写入统一为 o2n/n2o
             open_to_num = data.get("o2n", data.get("o2e", {}))
             num_to_open = data.get("n2o", data.get("e2o", {}))
             self._open_to_num = {k: int(v) for k, v in open_to_num.items()}

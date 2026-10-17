@@ -7,6 +7,8 @@
 - 业务错误码统一抛 QQAPIError，由上层映射 OneBot retcode 并按级别记日志
 """
 
+# by:xiaoliang - 2026.10.17
+
 from __future__ import annotations
 
 import asyncio
@@ -79,7 +81,6 @@ def _build_message_body(*, msg_type: int | None = None,
         body["msg_id"] = msg_id
     elif event_id:
         body["event_id"] = event_id
-    # msg_seq 仅属于被动回复；主动消息不得携带，否则部分场景会被平台判参错。
     if (msg_id or event_id) and msg_seq is not None:
         body["msg_seq"] = msg_seq
     if is_wakeup is not None:
@@ -104,7 +105,6 @@ class QQAPI:
         self._token_expire_at: float = 0.0
         self._token_lock = asyncio.Lock()
 
-    # ------------------------------------------------------------------ token
     async def _ensure_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(timeout=self.timeout)
@@ -137,7 +137,6 @@ class QQAPI:
     async def auth_header(self) -> dict[str, str]:
         return {"Authorization": f"QQBot {await self.access_token()}"}
 
-    # ------------------------------------------------------------------ 请求
     async def request(self, method: str, path: str, *,
                       json: Any = None, params: Any = None) -> Any:
         session = await self._ensure_session()
@@ -167,12 +166,10 @@ class QQAPI:
     async def put(self, path: str, **kw) -> Any:
         return await self.request("PUT", path, **kw)
 
-    # ---------------------------------------------------------------- gateway
     async def gateway_bot(self) -> dict[str, Any]:
         """GET /gateway/bot -> {url, shards, session_start_limit{...}}"""
         return await self.get("/gateway/bot")
 
-    # ---------------------------------------------------------------- 消息发送
     async def send_group_message(self, group_openid: str, *,
                                  content: str | None = None,
                                  msg_type: int | None = None,
@@ -243,7 +240,6 @@ class QQAPI:
         body.update(extra)
         return await self.post(f"/channels/{channel_id}/messages", json=body)
 
-    # ---------------------------------------------------------------- 互动
     async def respond_interaction(self, interaction_id: str, *,
                                   code: int = 0) -> dict:
         """回应 INTERACTION_CREATE，避免客户端按钮一直 loading。"""
@@ -251,7 +247,6 @@ class QQAPI:
             "code": int(code),
         })
 
-    # ---------------------------------------------------------------- 群管理
     async def approve_join_request(self, group_openid: str, member_openid: str,
                                    *, op: str, join_request_id: str | None = None,
                                    reject_reason: str | None = None,
@@ -271,7 +266,6 @@ class QQAPI:
             f"/v2/groups/{group_openid}/approval_join_request/{member_openid}",
             json=body)
 
-    # ---------------------------------------------------------------- 媒体上传
     async def upload_group_file(self, group_openid: str, *, file_type: int,
                                 url: str, srv_send_msg: bool = False) -> dict:
         return await self.post(f"/v2/groups/{group_openid}/files", json={
@@ -294,7 +288,6 @@ class QQAPI:
         return await self.get(f"/v2/groups/{group_openid}/members",
                               params=params)
 
-    # ---------------------------------------------------------------- 生命周期
     async def close(self) -> None:
         if self._session and not self._session.closed:
             await self._session.close()

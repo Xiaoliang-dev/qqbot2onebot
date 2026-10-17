@@ -5,6 +5,8 @@
 - 支持 ws:// 与 wss://
 """
 
+# by:xiaoliang - 2026.10.17
+
 from __future__ import annotations
 
 import asyncio

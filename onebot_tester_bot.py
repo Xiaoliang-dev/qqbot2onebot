@@ -1,19 +1,21 @@
+"""OneBot v11 测试机器人，验证消息、Q2OEX 按钮、键盘和 Markdown。"""
+
+# by:xiaoliang - 2026.10.17
+
 import json
 import re
 import time
-import websocket  # pip install websocket-client
+import websocket
 from urllib import request
 
-# ============ 配置 ============
-WS_URL = "ws://127.0.0.1:6700"          # 协议端 WebSocket 服务地址
-HTTP_URL = "http://127.0.0.1:5700"      # 协议端 HTTP API 地址
-ACCESS_TOKEN = ""                        # 如协议端设置了 token 填这里
-HEARTBEAT_INTERVAL = 30                  # 心跳间隔（秒）
+WS_URL = "ws://127.0.0.1:6700"
+HTTP_URL = "http://127.0.0.1:5700"
+ACCESS_TOKEN = ""
+HEARTBEAT_INTERVAL = 30
 
-echo_history = {}  # 记忆最近接收的消息（测试用）
+echo_history = {}
 
 
-# ============ API 调用（OneBot v11 标准） ============
 def call_api(action: str, params: dict = None):
     """POST /{action}，params 直接作为请求体。
     返回 {"status": "ok", "retcode": 0, "data": ...}"""
@@ -64,17 +66,14 @@ def _demo_button(label: str, data: str, button_id: str):
     }
 
 
-# ============ 消息解析 ============
 def extract_text(event: dict) -> str:
     """从消息事件中提取纯文本，兼容字符串(CQ码)和数组两种格式"""
     msg = event.get("message")
 
     if isinstance(msg, str):
-        # CQ 码字符串：去掉所有 [CQ:xxx,...] 标签，保留文本
         return re.sub(r"\[CQ:.*?\]", "", msg).strip()
 
     if isinstance(msg, list):
-        # 消息段数组：拼接所有 text 段
         texts = [seg["data"]["text"] for seg in msg
                  if isinstance(seg, dict) and seg.get("type") == "text"
                  and isinstance(seg.get("data"), dict)]
@@ -83,7 +82,6 @@ def extract_text(event: dict) -> str:
     return ""
 
 
-# ============ 指令处理 ============
 def handle_message(event: dict):
     """处理私聊/群聊消息事件"""
     user_id = event.get("user_id")
@@ -140,7 +138,7 @@ def handle_message(event: dict):
             ]}],
         })
 
-    echo_history[user_id] = text  # 记录最近消息
+    echo_history[user_id] = text
 
 
 def handle_event(event: dict):
@@ -162,7 +160,6 @@ def handle_event(event: dict):
             })
 
 
-# ============ WebSocket 连接 ============
 def on_open(ws):
     print(f"[连接] 已连接 {WS_URL}")
 
@@ -172,7 +169,6 @@ def on_message(ws, msg: str):
         data = json.loads(msg)
     except json.JSONDecodeError:
         return
-    # meta_event 是生命周期/心跳，直接跳过
     if data.get("post_type") == "meta_event":
         return
     print(f"[事件] {data.get('post_type')}: {json.dumps(data, ensure_ascii=False)[:200]}")

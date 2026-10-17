@@ -4,6 +4,8 @@
 引导用户填写 app_id / client_secret 后再次启动。
 """
 
+# by:xiaoliang - 2026.10.17
+
 from __future__ import annotations
 
 import os
@@ -14,10 +16,6 @@ from typing import Any
 import yaml
 
 DEFAULT_CONFIG_PATH = "config.yaml"
-
-# ---------------------------------------------------------------------------
-# 默认配置模板（自生成用，注释即文档）
-# ---------------------------------------------------------------------------
 
 DEFAULT_CONFIG_TEMPLATE = """\
 # =============================================================================
@@ -179,10 +177,6 @@ logging:
 """
 
 
-# ---------------------------------------------------------------------------
-# 配置数据类
-# ---------------------------------------------------------------------------
-
 @dataclass
 class QQBotWebhookConfig:
     host: str = "0.0.0.0"
@@ -193,7 +187,7 @@ class QQBotWebhookConfig:
 @dataclass
 class QQBotShardingConfig:
     enable: bool = True
-    count: int = 0  # 0 = auto
+    count: int = 0
 
 
 @dataclass
@@ -222,8 +216,8 @@ class QQBotConfig:
 
 @dataclass
 class ConnectionConfig:
-    type: str                       # http_server | http_post | ws_server | ws_reverse
-    protocol: int = 11              # 11 | 12
+    type: str
+    protocol: int = 11
     enable: bool = True
     raw: dict[str, Any] = field(default_factory=dict)
 
@@ -255,10 +249,6 @@ class Config:
     q2oex_enable: bool = True
     logging: LoggingConfig = field(default_factory=LoggingConfig)
 
-
-# ---------------------------------------------------------------------------
-# 加载
-# ---------------------------------------------------------------------------
 
 class ConfigError(Exception):
     pass

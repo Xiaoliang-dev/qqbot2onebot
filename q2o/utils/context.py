@@ -7,6 +7,8 @@
   支撑 get_msg 动作（LRU，默认 1000 条）。
 """
 
+# by:xiaoliang - 2026.10.17
+
 from __future__ import annotations
 
 import threading
@@ -16,7 +18,6 @@ from dataclasses import dataclass
 from typing import Any
 
 
-# QQ 官方现行被动回复约束（用于本地预判断，避免把明显过期的 msg_id 发给平台）
 PASSIVE_LIMITS: dict[str, dict[str, int]] = {
     "group": {"ttl": 5 * 60, "max_replies": 5},
     "private": {"ttl": 5 * 60, "max_replies": 4},
@@ -81,7 +82,6 @@ class MessageContext:
         explicit_msg_id = str(msg_id or "") or None
         explicit_event_id = str(event_id or "") or None
         if explicit_msg_id and explicit_event_id:
-            # QQ 文档要求 msg_id/event_id 二选一；本地明确拒绝，避免平台 400。
             raise ValueError("msg_id 与 event_id 只能二选一")
 
         if explicit_msg_id or explicit_event_id:

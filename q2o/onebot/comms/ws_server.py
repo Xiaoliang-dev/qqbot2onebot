@@ -7,6 +7,8 @@
 - 配置 tls_cert/tls_key 即启用 WSS
 """
 
+# by:xiaoliang - 2026.10.17
+
 from __future__ import annotations
 
 import ssl

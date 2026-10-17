@@ -5,6 +5,8 @@
 - 处理 op=0 事件推送：验签后交给事件分发器，立即回 200
 """
 
+# by:xiaoliang - 2026.10.17
+
 from __future__ import annotations
 
 import logging
@@ -36,7 +38,6 @@ class QQWebhookServer:
         self._verify_key = self._signing_key.verify_key
         self._runner: web.AppRunner | None = None
 
-    # ------------------------------------------------------------- 验签
     def _verify(self, timestamp: str, body: bytes, signature: str) -> bool:
         try:
             msg = timestamp.encode() + body
@@ -45,7 +46,6 @@ class QQWebhookServer:
         except (BadSignatureError, ValueError):
             return False
 
-    # ------------------------------------------------------------- 路由
     async def _handle(self, request: web.Request) -> web.Response:
         body = await request.read()
         try:
@@ -56,7 +56,6 @@ class QQWebhookServer:
         op = payload.get("op")
         d = payload.get("d") or {}
 
-        # 回调地址验证
         if op == 13:
             plain_token = d.get("plain_token", "")
             event_ts = d.get("event_ts", "")
@@ -68,7 +67,6 @@ class QQWebhookServer:
                 "signature": signature,
             })
 
-        # 事件推送
         if op == 0:
             ts = request.headers.get("X-Signature-Timestamp", "")
             sig = request.headers.get("X-Signature-Ed25519", "")
@@ -78,14 +76,12 @@ class QQWebhookServer:
             t = payload.get("t", "")
             log.debug("收到 QQ Webhook 事件: type=%s event_id=%s data=%s",
                       t, payload.get("id", ""), d)
-            # 立即响应，事件异步分发，避免平台判定超时重推
             import asyncio
             asyncio.create_task(self.on_event(t, d, str(payload.get("id") or "")))
             return web.json_response({})
 
         return web.json_response({})
 
-    # ------------------------------------------------------------- 生命周期
     async def start(self) -> None:
         app = web.Application()
         app.router.add_post(self.path, self._handle)
